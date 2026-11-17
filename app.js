@@ -63,10 +63,17 @@ function postedLabel(days) {
   if (days === 2) return 'قبل يومين';
   return 'قبل ' + days + ' أيام';
 }
-function sourceInitial(source) {
-  const s = String(source || '?').trim();
-  return s.charAt(0);
+// أسماء المصادر للعرض: الـ API يعيد معرّفات صغيرة (linkedin, tanqeeb, bayt)
+// بينما بيانات العرض تستخدم الأسماء الكبيرة — التوحيد هنا يصلح عدّادات
+// الستوريز والفلترة بالمصدر (كانت تظهر "0 وظيفة" رغم وجود وظائف).
+const SOURCE_LABELS = { linkedin: 'LinkedIn', bayt: 'Bayt', tanqeeb: 'Tanqeeb', indeed: 'Indeed', preply: 'Preply' };
+function sourceLabel(source) {
+  const s = String(source || '').trim();
+  return SOURCE_LABELS[s.toLowerCase()] || s || 'مصدر غير معروف';
 }
+// صورة البروفايل للبوست: أيقونة محايدة 💼 واحدة لكل المصادر — لا نضع شعار
+// أي شركة (ولا حرفاً بألوانها) كصورة بروفايل؛ اسم المصدر يظهر نصاً بجانبها.
+const SOURCE_AVATAR = '💼';
 function safeScroll(el) {
   if (!el) return;
   try { if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* بيئة بلا تمرير */ }
@@ -181,7 +188,7 @@ function normalizeJob(j, i) {
     location: j.location || 'عن بُعد',
     mode: inferMode(j),
     type: inferType(j),
-    source: j.source || 'مصدر غير معروف',
+    source: sourceLabel(j.source),
     url: j.url || '#',
     summary: j.description || j.summary || '',
     score: typeof j.score === 'number' ? Math.max(0, Math.min(100, Math.round(j.score))) : 70,
@@ -307,7 +314,7 @@ function renderNotifs() {
   list.innerHTML = unread.map(function (j) {
     return '' +
     '<button type="button" class="notif-item is-unread" data-notif-id="' + esc(j.id) + '">' +
-      '<span class="source-logo source-logo-sm" data-source="' + esc(j.source) + '" aria-hidden="true">' + esc(sourceInitial(j.source)) + '</span>' +
+      '<span class="source-logo source-logo-sm" aria-hidden="true">' + SOURCE_AVATAR + '</span>' +
       '<span class="notif-body">' +
         '<span class="notif-title">وظيفة جديدة: ' + esc(j.title) + '</span>' +
         '<span class="notif-meta">' + esc(j.source) + ' • ' + esc(j.location || 'عن بُعد') + ' • ' + esc(postedLabel(j.postedDaysAgo)) + '</span>' +
@@ -399,7 +406,7 @@ function jobCardHTML(j) {
   return '' +
   '<article class="job-card" data-id="' + esc(j.id) + '">' +
     '<div class="post-head">' +
-      '<span class="source-logo" data-source="' + esc(j.source) + '" aria-hidden="true">' + esc(sourceInitial(j.source)) + '</span>' +
+      '<span class="source-logo" aria-hidden="true">' + SOURCE_AVATAR + '</span>' +
       '<div class="post-head-text">' +
         '<strong class="post-source">' + esc(j.source) + '</strong>' +
         '<span class="post-meta">' + esc(postedLabel(j.postedDaysAgo)) + ' • 📍 ' + esc(j.location) + ' • 🌍 ' + esc(MODE_LABELS[j.mode]) + companyLine + '</span>' +
@@ -468,7 +475,7 @@ function renderStories() {
     const n = counts[src] || 0;
     html += '' +
     '<button type="button" class="story-card' + (state.filters.source === src ? ' is-active' : '') + '" data-story="' + esc(src) + '">' +
-      '<span class="story-avatar" data-source="' + esc(src) + '" aria-hidden="true">' + esc(sourceInitial(src)) + '</span>' +
+      '<span class="story-avatar" aria-hidden="true">' + SOURCE_AVATAR + '</span>' +
       '<span class="story-label">' + esc(src) + '</span>' +
       '<span class="story-sub">' + n + ' وظيفة</span>' +
     '</button>';
@@ -495,7 +502,7 @@ function renderStats() {
   $('#sourceList').innerHTML = ranked.map(function (r) {
     return '' +
     '<li><button type="button" class="source-row' + (state.filters.source === r[0] ? ' is-active' : '') + '" data-source-filter="' + esc(r[0]) + '">' +
-      '<span class="source-logo source-logo-sm" data-source="' + esc(r[0]) + '" aria-hidden="true">' + esc(sourceInitial(r[0])) + '</span>' +
+      '<span class="source-logo source-logo-sm" aria-hidden="true">' + SOURCE_AVATAR + '</span>' +
       '<span class="source-row-name">' + esc(r[0]) + '</span>' +
       '<span class="online-dot" aria-hidden="true"></span>' +
       '<strong class="source-row-count">' + r[1] + '</strong>' +

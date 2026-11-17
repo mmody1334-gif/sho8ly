@@ -443,6 +443,7 @@ a { color: var(--fb-blue); }
   border: 4px solid #fff;
 }
 .story-avatar {
+  background: var(--fb-blue);
   position: absolute;
   top: 10px;
   inset-inline-start: 10px;
@@ -524,6 +525,7 @@ a { color: var(--fb-blue); }
 .post-source:hover { text-decoration: underline; }
 .post-meta { font-size: 13px; color: var(--muted); }
 .source-logo {
+  background: var(--fb-blue);
   flex: none;
   width: 40px;
   height: 40px;
@@ -536,13 +538,6 @@ a { color: var(--fb-blue); }
   background: var(--fb-blue);
 }
 .source-logo-sm { width: 36px; height: 36px; font-size: 15px; }
-.source-logo[data-source="LinkedIn"] { background: #0a66c2; }
-.source-logo[data-source="Bayt"] { background: #7c3aed; }
-.source-logo[data-source="Indeed"] { background: #2557a7; }
-.source-logo[data-source="Tanqeeb"] { background: #059669; }
-.source-logo[data-source="Preply"] { background: #e11d48; }
-.source-logo[data-source="منصة نفهم"] { background: #059669; }
-.source-logo[data-source="منصة مدرستي"] { background: #d97706; }
 .post-text { font-size: 16.5px; font-weight: 700; }
 .job-summary { color: #1c1e21; font-size: 14.5px; }
 .job-meta { display: flex; flex-wrap: wrap; gap: 6px; }
