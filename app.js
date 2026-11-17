@@ -1,16 +1,20 @@
-/* تراكر وظائف العلوم — Frontend
+/* شغلي — Frontend (واجهة فيسبوك-ستايل + إشعارات داخل التطبيق)
  * يجلب الوظائف من Worker API على /api/jobs، ولو فشل يعرض بيانات تجريبية واقعية الشكل.
+ * الإشعارات: نفس الوظائف الجديدة التي تطلق تنبيه الإيميل تظهر هنا أيضاً
+ * (جرس + قائمة منسدلة + Toast + إشعار متصفح إن كان مسموحاً به مسبقاً).
  */
 'use strict';
 
-/* ===== الإعدادات =====
- * غيّر هذا الرابط لرابط الـ Worker الحقيقي بعد نشره، مثال:
- * const API_BASE = 'https://sho8ly.<subdomain>.workers.dev';
- */
-const API_BASE = 'https://sho8ly....workers.dev';
+/* ===== الإعدادات ===== */
+const API_BASE = 'https://sho8ly.emailsaty.workers.dev';
 const JOBS_ENDPOINT = API_BASE + '/api/jobs';
 const FETCH_TIMEOUT_MS = 5000;
+const POLL_INTERVAL_MS = 60000;
 const STORAGE_KEY = 'cjt_saved_v1';
+const LIKED_KEY = 'sho8ly_liked_v1';
+const NOTES_KEY = 'sho8ly_notes_v1';
+const SEEN_KEY = 'sho8ly_seen_v1';
+const NOTIF_READ_KEY = 'sho8ly_notif_read_v1';
 
 /* ===== بيانات تجريبية واقعية الشكل (تُعرض فقط لو الـ API مش جاهز) ===== */
 const DEMO_JOBS = [
@@ -29,13 +33,17 @@ const DEMO_JOBS = [
 const SUBJECT_LABELS = { chem: 'كيمياء', phys: 'فيزياء', bio: 'أحياء' };
 const TYPE_LABELS = { private: 'دروس خصوصية', remedial: 'تقوية', institute: 'معاهد', school: 'مدارس', platform: 'منصات' };
 const MODE_LABELS = { online: 'أونلاين', onsite: 'حضوري' };
+const STORY_SOURCES = ['LinkedIn', 'Bayt', 'Tanqeeb', 'Indeed'];
 
 /* ===== الحالة ===== */
 const state = {
   jobs: [],
   isDemo: false,
-  filters: { subject: 'all', location: 'all', mode: 'all', type: 'all', savedOnly: false, q: '' },
-  saved: new Set()
+  apiError: false,
+  filters: { subject: 'all', location: 'all', mode: 'all', type: 'all', source: 'all', savedOnly: false, q: '' },
+  saved: new Set(),
+  liked: new Set(),
+  notes: {}
 };
 
 /* ===== أدوات مساعدة ===== */
@@ -59,47 +67,134 @@ function sourceInitial(source) {
   const s = String(source || '?').trim();
   return s.charAt(0);
 }
+function safeScroll(el) {
+  if (!el) return;
+  try { if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* بيئة بلا تمرير */ }
+}
 
-/* ===== الحفظ (localStorage) ===== */
-function loadSaved() {
+/* معرّف مستقر للوظيفة: هاش من الرابط + العنوان (الـ API لا يعيد حقل id).
+ * نفس الرابط + نفس العنوان يعطيان دائماً نفس المعرّف، فالحفظ والإعجاب
+ * والإشعارات تبقى سليمة بين الزيارات والفحوصات. */
+function stableId(url, title) {
+  const s = String(url || '') + '|' + String(title || '');
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = (((h << 5) + h + s.charCodeAt(i)) >>> 0);
+  }
+  return 'u' + h.toString(36);
+}
+
+function daysBetween(dateStr) {
+  const t = Date.parse(dateStr);
+  if (isNaN(t)) return null;
+  return Math.max(0, Math.floor((Date.now() - t) / 86400000));
+}
+
+function inferSubject(j) {
+  if (['chem', 'phys', 'bio'].includes(j.subject)) return j.subject;
+  const subs = Array.isArray(j.subjects) ? j.subjects.join(' ') : '';
+  const hay = (subs + ' ' + (j.title || '') + ' ' + (j.description || '')).toLowerCase();
+  if (/chem|كيمياء|كيميا/.test(hay)) return 'chem';
+  if (/phys|فيزياء|فيزيا/.test(hay)) return 'phys';
+  if (/bio|أحياء|احياء|biology/.test(hay)) return 'bio';
+  return 'chem';
+}
+
+function inferType(j) {
+  if (['private', 'remedial', 'institute', 'school', 'platform'].includes(j.type)) return j.type;
+  const hay = ((j.title || '') + ' ' + (j.description || ''));
+  if (/خصوصي|private tutor|tutoring/i.test(hay)) return 'private';
+  if (/تقوية|remedial/i.test(hay)) return 'remedial';
+  if (/معهد|institute/i.test(hay)) return 'institute';
+  if (/مدرسة|مدارس|school/i.test(hay)) return 'school';
+  if (/منصة|platform/i.test(hay)) return 'platform';
+  return 'platform';
+}
+
+function inferMode(j) {
+  if (j.mode === 'onsite' || j.mode === 'online') return j.mode;
+  if (j.locationMode === 'onsite') return 'onsite';
+  if (j.locationMode === 'online') return 'online';
+  const loc = String(j.location || '');
+  if (loc && loc !== 'عن بُعد' && loc !== 'Remote') return 'onsite';
+  return 'online';
+}
+
+/* ===== التخزين المحلي ===== */
+function loadSet(key) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Set();
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
     const arr = JSON.parse(raw);
     return new Set(Array.isArray(arr) ? arr : []);
-  } catch (e) { return new Set(); }
+  } catch (e) { return null; }
 }
-function persistSaved() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(state.saved))); } catch (e) { /* تجاهل: التخزين غير متاح */ }
+function persistSet(key, set) {
+  try { localStorage.setItem(key, JSON.stringify(Array.from(set))); } catch (e) { /* تجاهل */ }
 }
+function loadSaved() { return loadSet(STORAGE_KEY) || new Set(); }
+function loadLiked() { return loadSet(LIKED_KEY) || new Set(); }
+function loadNotes() {
+  try {
+    const raw = localStorage.getItem(NOTES_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    return (obj && typeof obj === 'object') ? obj : {};
+  } catch (e) { return {}; }
+}
+function persistNotes() {
+  try { localStorage.setItem(NOTES_KEY, JSON.stringify(state.notes)); } catch (e) { /* تجاهل */ }
+}
+function loadSeen() { return loadSet(SEEN_KEY); }
+function persistSeen(set) { persistSet(SEEN_KEY, set); }
+function loadNotifRead() { return loadSet(NOTIF_READ_KEY) || new Set(); }
+function persistNotifRead(set) { persistSet(NOTIF_READ_KEY, set); }
+
 function toggleSave(id, btn) {
   if (state.saved.has(id)) state.saved.delete(id);
   else state.saved.add(id);
-  persistSaved();
+  persistSet(STORAGE_KEY, state.saved);
   renderAll();
   if (btn) btn.focus();
 }
+function toggleLike(id) {
+  if (state.liked.has(id)) state.liked.delete(id);
+  else state.liked.add(id);
+  persistSet(LIKED_KEY, state.liked);
+  renderJobs();
+}
 
-/* ===== جلب البيانات ===== */
+/* ===== جلب البيانات + كشف الجديد ===== */
 function normalizeJob(j, i) {
-  const subject = ['chem', 'phys', 'bio'].includes(j.subject) ? j.subject : 'chem';
+  const isDemo = typeof j.id === 'string' && j.id.indexOf('demo-') === 0;
+  const id = isDemo ? j.id : stableId(j.url, j.title);
+  // عدد الأيام منذ أول ظهور: من firstSeenAt أولاً، ثم postedAt، ثم القيمة الجاهزة.
+  let days = typeof j.postedDaysAgo === 'number' ? j.postedDaysAgo : 0;
+  const fromFirstSeen = j.firstSeenAt ? daysBetween(j.firstSeenAt) : null;
+  const fromPosted = j.postedAt ? daysBetween(j.postedAt) : null;
+  if (fromFirstSeen !== null) days = fromFirstSeen;
+  else if (fromPosted !== null) days = fromPosted;
   return {
-    id: String(j.id || ('job-' + i)),
+    id: id,
     title: j.title || 'وظيفة بدون عنوان',
-    subject: subject,
+    company: j.company || '',
+    subject: inferSubject(j),
     location: j.location || 'عن بُعد',
-    mode: j.mode === 'onsite' ? 'onsite' : 'online',
-    type: ['private', 'remedial', 'institute', 'school', 'platform'].includes(j.type) ? j.type : 'platform',
+    mode: inferMode(j),
+    type: inferType(j),
     source: j.source || 'مصدر غير معروف',
     url: j.url || '#',
-    summary: j.summary || '',
+    summary: j.description || j.summary || '',
     score: typeof j.score === 'number' ? Math.max(0, Math.min(100, Math.round(j.score))) : 70,
-    postedDaysAgo: typeof j.postedDaysAgo === 'number' ? j.postedDaysAgo : 0,
-    salary: j.salary || ''
+    postedDaysAgo: days,
+    salary: j.salary || '',
+    firstSeenAt: j.firstSeenAt || j.postedAt || null,
+    locationMode: j.locationMode || null,
+    locationReason: j.locationReason || ''
   };
 }
 
 async function loadJobs() {
+  let list;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(function () { ctrl.abort(); }, FETCH_TIMEOUT_MS);
@@ -107,16 +202,173 @@ async function loadJobs() {
     clearTimeout(timer);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    const list = Array.isArray(data) ? data : (Array.isArray(data.jobs) ? data.jobs : (Array.isArray(data.data) ? data.data : null));
+    list = Array.isArray(data) ? data : (Array.isArray(data.jobs) ? data.jobs : (Array.isArray(data.data) ? data.data : null));
     if (!list || list.length === 0) throw new Error('empty jobs');
-    state.jobs = list.map(normalizeJob);
     state.isDemo = false;
   } catch (e) {
-    // الـ API مش جاهز أو فشل — fallback للبيانات التجريبية
-    state.jobs = DEMO_JOBS.map(normalizeJob);
-    state.isDemo = true;
+    // فشل الاتصال بالـ API (شبكة / CORS / مهلة): لا نعرض بيانات تجريبية
+    // بصمت أبداً — نعرض حالة خطأ واضحة مع زر إعادة محاولة، والبيانات
+    // التجريبية اختيار صريح من المستخدم فقط (زر "عرض بيانات تجريبية").
+    state.jobs = [];
+    state.isDemo = false;
+    state.apiError = true;
+    $('#demoBanner').hidden = true;
+    updateNotifBadge();
+    renderAll();
+    return;
   }
+  const normalized = list.map(normalizeJob);
+  state.apiError = false;
+
+  // كشف الوظائف الجديدة مقارنة بما رأيناه من قبل.
+  const prevSeen = loadSeen(); // null في أول زيارة
+  const isFirstVisit = prevSeen === null;
+  const newOnes = isFirstVisit ? [] : normalized.filter(function (j) { return !prevSeen.has(j.id); });
+
+  const seen = prevSeen || new Set();
+  normalized.forEach(function (j) { seen.add(j.id); });
+  persistSeen(seen);
+
+  if (isFirstVisit) {
+    // أول زيارة: تسجيل صامت — لا فيض من 19 إشعاراً عن وظائف قديمة.
+    persistNotifRead(new Set(normalized.map(function (j) { return j.id; })));
+  } else {
+    newOnes.forEach(function (j) { notifyNewJob(j); });
+  }
+
+  state.jobs = normalized;
   $('#demoBanner').hidden = !state.isDemo;
+  updateNotifBadge();
+  renderAll();
+}
+
+/* البيانات التجريبية اختيار صريح فقط (من حالة الخطأ) — لا إشعارات عنها. */
+function showDemo() {
+  state.jobs = DEMO_JOBS.map(normalizeJob);
+  state.isDemo = true;
+  state.apiError = false;
+  const prevSeen = loadSeen();
+  if (prevSeen === null) {
+    persistSeen(new Set(state.jobs.map(function (j) { return j.id; })));
+    persistNotifRead(new Set(state.jobs.map(function (j) { return j.id; })));
+  } else {
+    // البيانات التجريبية لا تولّد إشعارات أبداً: تسجيل صامت في seen وفي read.
+    const read = loadNotifRead();
+    state.jobs.forEach(function (j) { prevSeen.add(j.id); read.add(j.id); });
+    persistSeen(prevSeen);
+    persistNotifRead(read);
+  }
+  $('#demoBanner').hidden = false;
+  updateNotifBadge();
+  renderAll();
+}
+
+/* ===== الإشعارات داخل التطبيق ===== */
+function getUnreadJobs() {
+  const read = loadNotifRead();
+  return state.jobs.filter(function (j) { return !read.has(j.id); });
+}
+function updateNotifBadge() {
+  const unread = getUnreadJobs().length;
+  const badge = $('#notifBadge');
+  badge.textContent = unread > 99 ? '99+' : String(unread);
+  badge.hidden = unread === 0;
+  const menuCount = $('#notifMenuCount');
+  menuCount.textContent = badge.textContent;
+  menuCount.hidden = unread === 0;
+}
+function showToast(msg) {
+  const wrap = $('#toastWrap');
+  if (!wrap) return;
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  wrap.appendChild(el);
+  while (wrap.children.length > 3) wrap.removeChild(wrap.firstChild);
+  setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 5000);
+}
+function maybeBrowserNotify(job) {
+  // إشعار متصفح فقط إن كان الإذن ممنوحاً مسبقاً — لا نطلب الإذن تلقائياً أبداً.
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      new Notification('🎯 وظيفة جديدة: ' + job.title, { body: job.source + ' • ' + (job.location || 'عن بُعد') });
+    }
+  } catch (e) { /* تجاهل */ }
+}
+function notifyNewJob(job) {
+  showToast('🎯 وظيفة جديدة: ' + job.title + ' — ' + job.source);
+  maybeBrowserNotify(job);
+}
+function renderNotifs() {
+  const unread = getUnreadJobs().slice().sort(function (a, b) { return (a.postedDaysAgo - b.postedDaysAgo); });
+  const list = $('#notifList');
+  const empty = $('#notifEmpty');
+  empty.hidden = unread.length !== 0;
+  list.innerHTML = unread.map(function (j) {
+    return '' +
+    '<button type="button" class="notif-item is-unread" data-notif-id="' + esc(j.id) + '">' +
+      '<span class="source-logo source-logo-sm" data-source="' + esc(j.source) + '" aria-hidden="true">' + esc(sourceInitial(j.source)) + '</span>' +
+      '<span class="notif-body">' +
+        '<span class="notif-title">وظيفة جديدة: ' + esc(j.title) + '</span>' +
+        '<span class="notif-meta">' + esc(j.source) + ' • ' + esc(j.location || 'عن بُعد') + ' • ' + esc(postedLabel(j.postedDaysAgo)) + '</span>' +
+      '</span>' +
+      '<span class="unread-dot" aria-hidden="true"></span>' +
+    '</button>';
+  }).join('');
+}
+function openNotifDropdown() {
+  renderNotifs();
+  const dd = $('#notifDropdown');
+  dd.hidden = false;
+  $('#bellBtn').setAttribute('aria-expanded', 'true');
+  const row = $('#enableBrowserNotif');
+  try {
+    row.hidden = (typeof Notification === 'undefined') || Notification.permission === 'granted';
+  } catch (e) { row.hidden = true; }
+}
+function closeNotifDropdown() {
+  $('#notifDropdown').hidden = true;
+  $('#bellBtn').setAttribute('aria-expanded', 'false');
+}
+function markNotifRead(id) {
+  const read = loadNotifRead();
+  read.add(id);
+  persistNotifRead(read);
+  updateNotifBadge();
+  renderNotifs();
+}
+function markAllNotifsRead() {
+  persistNotifRead(new Set(state.jobs.map(function (j) { return j.id; })));
+  updateNotifBadge();
+  renderNotifs();
+}
+function goToJob(id) {
+  closeNotifDropdown();
+  // الوظيفة قد تكون مخفية بفلتر — نعيد التعيين أولاً لضمان ظهورها.
+  if (!document.querySelector('.job-card[data-id="' + id + '"]')) resetFilters();
+  const card = document.querySelector('.job-card[data-id="' + id + '"]');
+  if (!card) return;
+  safeScroll(card);
+  card.classList.remove('flash');
+  void card.offsetWidth; // إعادة تشغيل الحركة
+  card.classList.add('flash');
+  setTimeout(function () { card.classList.remove('flash'); }, 2500);
+}
+
+/* محاكاة وظيفة جديدة (للاختبار الآلي عبر window.__cjt.injectJob) */
+function injectJob(raw) {
+  const j = normalizeJob(raw, state.jobs.length);
+  const seen = loadSeen() || new Set();
+  const isNew = !seen.has(j.id);
+  state.jobs.unshift(j);
+  if (isNew) {
+    seen.add(j.id);
+    persistSeen(seen);
+    notifyNewJob(j);
+  }
+  updateNotifBadge();
+  renderAll();
+  return j;
 }
 
 /* ===== الفلترة (منطق نقي — قابل للاختبار) ===== */
@@ -127,9 +379,10 @@ function applyFilters(jobs, filters, saved) {
     if (filters.location !== 'all' && j.location !== filters.location) return false;
     if (filters.mode !== 'all' && j.mode !== filters.mode) return false;
     if (filters.type !== 'all' && j.type !== filters.type) return false;
+    if (filters.source !== 'all' && j.source !== filters.source) return false;
     if (filters.savedOnly && !saved.has(j.id)) return false;
     if (q) {
-      const hay = normalizeArabic([j.title, j.summary, j.source, j.location, SUBJECT_LABELS[j.subject], TYPE_LABELS[j.type], MODE_LABELS[j.mode], j.salary].join(' '));
+      const hay = normalizeArabic([j.title, j.summary, j.source, j.company, j.location, SUBJECT_LABELS[j.subject], TYPE_LABELS[j.type], MODE_LABELS[j.mode], j.salary].join(' '));
       if (hay.indexOf(q) === -1) return false;
     }
     return true;
@@ -139,29 +392,45 @@ function applyFilters(jobs, filters, saved) {
 /* ===== العرض ===== */
 function jobCardHTML(j) {
   const isSaved = state.saved.has(j.id);
+  const isLiked = state.liked.has(j.id);
+  const note = state.notes[j.id] || '';
   const modeClass = j.mode === 'online' ? 'mode-online' : 'mode-onsite';
+  const companyLine = j.company ? ' • ' + esc(j.company) : '';
   return '' +
   '<article class="job-card" data-id="' + esc(j.id) + '">' +
-    '<div class="job-head">' +
+    '<div class="post-head">' +
       '<span class="source-logo" data-source="' + esc(j.source) + '" aria-hidden="true">' + esc(sourceInitial(j.source)) + '</span>' +
-      '<div class="job-title-wrap">' +
-        '<h2 class="job-title">' + esc(j.title) + '</h2>' +
-        '<p class="job-source">' + esc(j.source) + ' • <span class="posted">' + esc(postedLabel(j.postedDaysAgo)) + '</span>' + (j.salary ? ' • ' + esc(j.salary) : '') + '</p>' +
+      '<div class="post-head-text">' +
+        '<strong class="post-source">' + esc(j.source) + '</strong>' +
+        '<span class="post-meta">' + esc(postedLabel(j.postedDaysAgo)) + ' • 📍 ' + esc(j.location) + ' • 🌍 ' + esc(MODE_LABELS[j.mode]) + companyLine + '</span>' +
       '</div>' +
     '</div>' +
+    '<h2 class="post-text">' + esc(j.title) + '</h2>' +
+    (j.summary ? '<p class="job-summary">' + esc(j.summary) + '</p>' : '') +
     '<div class="job-meta">' +
       '<span class="tag">' + esc(SUBJECT_LABELS[j.subject]) + '</span>' +
       '<span class="tag ' + modeClass + '">' + esc(MODE_LABELS[j.mode]) + '</span>' +
       '<span class="tag">📍 ' + esc(j.location) + '</span>' +
       '<span class="tag">' + esc(TYPE_LABELS[j.type]) + '</span>' +
+      (j.salary ? '<span class="tag">💰 ' + esc(j.salary) + '</span>' : '') +
     '</div>' +
-    '<p class="job-summary">' + esc(j.summary) + '</p>' +
-    '<div class="job-foot">' +
+    '<div class="post-stats">' +
+      (isLiked ? '<span>👍 أعجبك هذا</span>' : '<span>👍</span>') +
+      (note ? '<span>💬 تعليق واحد</span>' : '') +
+      (isSaved ? '<span>⭐ محفوظة</span>' : '') +
       '<span class="score">مطابقة <b>' + j.score + '%</b><span class="score-bar"><i style="width:' + j.score + '%"></i></span></span>' +
-      '<div class="job-actions">' +
-        '<button type="button" class="btn btn-save' + (isSaved ? ' is-saved' : '') + '" data-action="save" data-id="' + esc(j.id) + '" aria-pressed="' + isSaved + '">' + (isSaved ? '⭐ محفوظة' : '☆ حفظ') + '</button>' +
-        '<a class="btn btn-apply" href="' + esc(j.url) + '" target="_blank" rel="noopener noreferrer">تقديم ←</a>' +
-      '</div>' +
+    '</div>' +
+    '<div class="post-actions">' +
+      '<button type="button" class="action-btn' + (isLiked ? ' is-liked' : '') + '" data-action="like" data-id="' + esc(j.id) + '" aria-pressed="' + isLiked + '">👍 أعجبني</button>' +
+      '<button type="button" class="action-btn" data-action="comment" data-id="' + esc(j.id) + '">💬 تعليق</button>' +
+      '<button type="button" class="action-btn" data-action="share" data-id="' + esc(j.id) + '">↗️ مشاركة</button>' +
+      '<button type="button" class="action-btn' + (isSaved ? ' is-saved' : '') + '" data-action="save" data-id="' + esc(j.id) + '" aria-pressed="' + isSaved + '">' + (isSaved ? '⭐ محفوظة' : '☆ حفظ') + '</button>' +
+      '<a class="btn btn-apply" href="' + esc(j.url) + '" target="_blank" rel="noopener noreferrer">تقديم ←</a>' +
+    '</div>' +
+    '<div class="comment-box" data-comment-box="' + esc(j.id) + '" hidden>' +
+      '<input type="text" placeholder="اكتب ملاحظة على هذه الوظيفة…" value="' + esc(note) + '" data-note-input="' + esc(j.id) + '" aria-label="ملاحظة على الوظيفة">' +
+      '<button type="button" class="btn btn-primary btn-sm" data-action="save-note" data-id="' + esc(j.id) + '">حفظ الملاحظة</button>' +
+      (note ? '<p class="saved-note">💬 ' + esc(note) + '</p>' : '') +
     '</div>' +
   '</article>';
 }
@@ -170,17 +439,41 @@ function renderJobs() {
   const filtered = applyFilters(state.jobs, state.filters, state.saved);
   const list = $('#jobsList');
   list.innerHTML = filtered.map(jobCardHTML).join('');
-  $('#emptyState').hidden = filtered.length !== 0;
+  $('#apiErrorState').hidden = !state.apiError;
+  $('#emptyState').hidden = state.apiError || filtered.length !== 0;
   $('#resultCount').textContent = filtered.length + ' وظيفة' + (filtered.length !== state.jobs.length ? ' من أصل ' + state.jobs.length : '');
   const active = [];
   if (state.filters.subject !== 'all') active.push('المادة: ' + SUBJECT_LABELS[state.filters.subject]);
   if (state.filters.location !== 'all') active.push('المكان: ' + state.filters.location);
   if (state.filters.mode !== 'all') active.push(MODE_LABELS[state.filters.mode]);
   if (state.filters.type !== 'all') active.push(TYPE_LABELS[state.filters.type]);
+  if (state.filters.source !== 'all') active.push('المصدر: ' + state.filters.source);
   if (state.filters.savedOnly) active.push('المحفوظة فقط');
   if (state.filters.q.trim()) active.push('بحث: «' + state.filters.q.trim() + '»');
   $('#activeFilters').textContent = active.length ? 'الفلاتر النشطة: ' + active.join(' • ') : '';
   return filtered;
+}
+
+function renderStories() {
+  const counts = {};
+  state.jobs.forEach(function (j) { counts[j.source] = (counts[j.source] || 0) + 1; });
+  const row = $('#storiesRow');
+  let html = '' +
+  '<button type="button" class="story-card story-create' + (state.filters.source === 'all' ? ' is-active' : '') + '" data-story="all">' +
+    '<span class="story-create-top"><span class="story-plus" aria-hidden="true">＋</span></span>' +
+    '<span class="story-label">مصدر جديد؟</span>' +
+    '<span class="story-sub">اعرض كل المصادر</span>' +
+  '</button>';
+  STORY_SOURCES.forEach(function (src) {
+    const n = counts[src] || 0;
+    html += '' +
+    '<button type="button" class="story-card' + (state.filters.source === src ? ' is-active' : '') + '" data-story="' + esc(src) + '">' +
+      '<span class="story-avatar" data-source="' + esc(src) + '" aria-hidden="true">' + esc(sourceInitial(src)) + '</span>' +
+      '<span class="story-label">' + esc(src) + '</span>' +
+      '<span class="story-sub">' + n + ' وظيفة</span>' +
+    '</button>';
+  });
+  row.innerHTML = html;
 }
 
 function renderStats() {
@@ -199,13 +492,20 @@ function renderStats() {
     $('#statTopSource').textContent = '—';
     $('#statTopSourceCount').textContent = '';
   }
-  $('#sourceBreakdown').innerHTML = ranked.map(function (r) {
-    return '<li><span>' + esc(r[0]) + '</span><strong>' + r[1] + '</strong></li>';
+  $('#sourceList').innerHTML = ranked.map(function (r) {
+    return '' +
+    '<li><button type="button" class="source-row' + (state.filters.source === r[0] ? ' is-active' : '') + '" data-source-filter="' + esc(r[0]) + '">' +
+      '<span class="source-logo source-logo-sm" data-source="' + esc(r[0]) + '" aria-hidden="true">' + esc(sourceInitial(r[0])) + '</span>' +
+      '<span class="source-row-name">' + esc(r[0]) + '</span>' +
+      '<span class="online-dot" aria-hidden="true"></span>' +
+      '<strong class="source-row-count">' + r[1] + '</strong>' +
+    '</button></li>';
   }).join('');
   $('#lastUpdated').textContent = new Date().toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function renderAll() {
+  renderStories();
   renderJobs();
   renderStats();
 }
@@ -218,18 +518,49 @@ function setFilter(key, value) {
   });
   renderAll();
 }
+function setSourceFilter(source) {
+  state.filters.source = source;
+  renderAll();
+}
 
 function resetFilters() {
-  state.filters = { subject: 'all', location: 'all', mode: 'all', type: 'all', savedOnly: false, q: '' };
+  state.filters = { subject: 'all', location: 'all', mode: 'all', type: 'all', source: 'all', savedOnly: false, q: '' };
   document.querySelectorAll('.chip-row .chip').forEach(function (c) {
     c.classList.toggle('is-active', c.dataset.value === 'all');
   });
   $('#savedOnly').checked = false;
-  $('#savedTopBtn').setAttribute('aria-pressed', 'false');
+  setNavActive('home');
   const si = $('#searchInput');
   si.value = '';
   $('#clearSearch').hidden = true;
   renderAll();
+}
+
+function setNavActive(which) {
+  document.querySelectorAll('.nav-item').forEach(function (n) {
+    n.classList.toggle('is-active', n.dataset.nav === which);
+  });
+  document.querySelectorAll('.side-menu .menu-item').forEach(function (m) {
+    m.classList.toggle('is-active', m.dataset.menu === which);
+  });
+}
+
+function toggleSavedView(on) {
+  state.filters.savedOnly = on;
+  $('#savedOnly').checked = on;
+  setNavActive(on ? 'saved' : 'home');
+  renderAll();
+}
+
+function shareJob(id) {
+  const job = state.jobs.find(function (j) { return j.id === id; });
+  const url = job ? job.url : '#';
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).catch(function () { /* تجاهل */ });
+    }
+  } catch (e) { /* تجاهل */ }
+  showToast('تم النسخ: ' + url);
 }
 
 function bindEvents() {
@@ -242,17 +573,7 @@ function bindEvents() {
   });
 
   $('#savedOnly').addEventListener('change', function (e) {
-    state.filters.savedOnly = e.target.checked;
-    renderAll();
-  });
-
-  $('#savedTopBtn').addEventListener('click', function () {
-    const on = !state.filters.savedOnly;
-    state.filters.savedOnly = on;
-    $('#savedOnly').checked = on;
-    this.setAttribute('aria-pressed', String(on));
-    renderAll();
-    document.querySelector('.feed').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toggleSavedView(e.target.checked);
   });
 
   const searchInput = $('#searchInput');
@@ -269,32 +590,119 @@ function bindEvents() {
     renderAll();
   });
 
+  // الستوريز: فلترة حسب المصدر
+  $('#storiesRow').addEventListener('click', function (e) {
+    const card = e.target.closest('[data-story]');
+    if (!card) return;
+    setSourceFilter(card.dataset.story);
+  });
+  // قائمة المصادر في السايدبار الأيسر
+  $('#sourceList').addEventListener('click', function (e) {
+    const row = e.target.closest('[data-source-filter]');
+    if (!row) return;
+    const src = row.dataset.sourceFilter;
+    setSourceFilter(state.filters.source === src ? 'all' : src);
+  });
+
+  // التنقل العلوي
+  $('#navHome').addEventListener('click', function () { resetFilters(); safeScroll($('.feed')); });
+  $('#navSaved').addEventListener('click', function () { toggleSavedView(!state.filters.savedOnly); safeScroll($('.feed')); });
+  $('#navSources').addEventListener('click', function () { setNavActive('sources'); safeScroll($('#sourcesCard')); });
+  $('#navAbout').addEventListener('click', function () { setNavActive('about'); safeScroll($('#aboutCard')); });
+  // القائمة الجانبية
+  $('#menuHome').addEventListener('click', function () { resetFilters(); safeScroll($('.feed')); });
+  $('#menuSaved').addEventListener('click', function () { toggleSavedView(!state.filters.savedOnly); safeScroll($('.feed')); });
+  $('#menuFilters').addEventListener('click', function () { setNavActive('home'); safeScroll($('#filterCard')); });
+  $('#menuNotifs').addEventListener('click', function () { openNotifDropdown(); });
+
+  // صندوق النشر
+  const focusSearch = function () { searchInput.focus(); safeScroll(searchInput); };
+  $('#composerSearch').addEventListener('click', focusSearch);
+  $('#composerSearchBtn').addEventListener('click', focusSearch);
+  $('#composerFilterBtn').addEventListener('click', function () { safeScroll($('#filterCard')); });
+  $('#composerRefreshBtn').addEventListener('click', async function () { await loadJobs(); showToast('تم التحديث'); });
+
+  // الجرس والقائمة المنسدلة
+  $('#bellBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    if ($('#notifDropdown').hidden) openNotifDropdown();
+    else closeNotifDropdown();
+  });
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('#notifWrap')) closeNotifDropdown();
+  });
+  $('#markAllRead').addEventListener('click', function () { markAllNotifsRead(); });
+  $('#enableBrowserNotif').addEventListener('click', function () {
+    try {
+      if (typeof Notification !== 'undefined' && Notification.requestPermission) {
+        Notification.requestPermission().then(function () { openNotifDropdown(); });
+      }
+    } catch (e) { /* تجاهل */ }
+  });
+  $('#notifList').addEventListener('click', function (e) {
+    const item = e.target.closest('[data-notif-id]');
+    if (!item) return;
+    markNotifRead(item.dataset.notifId);
+    goToJob(item.dataset.notifId);
+  });
+
+  // أفعال كرت الوظيفة (نمط منشور فيسبوك)
   $('#jobsList').addEventListener('click', function (e) {
-    const btn = e.target.closest('[data-action="save"]');
-    if (!btn) return;
-    toggleSave(btn.dataset.id, btn);
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    const id = el.dataset.id;
+    const action = el.dataset.action;
+    if (action === 'save') toggleSave(id, el);
+    else if (action === 'like') toggleLike(id);
+    else if (action === 'share') shareJob(id);
+    else if (action === 'comment') {
+      const box = document.querySelector('[data-comment-box="' + id + '"]');
+      if (box) {
+        box.hidden = !box.hidden;
+        if (!box.hidden) {
+          const input = box.querySelector('input');
+          if (input) input.focus();
+        }
+      }
+    } else if (action === 'save-note') {
+      const input = document.querySelector('[data-note-input="' + id + '"]');
+      const val = input ? input.value.trim() : '';
+      if (val) state.notes[id] = val;
+      else delete state.notes[id];
+      persistNotes();
+      renderJobs();
+    }
   });
 
   $('#resetFilters').addEventListener('click', resetFilters);
   $('#emptyReset').addEventListener('click', resetFilters);
 
-  $('#refreshBtn').addEventListener('click', async function () {
-    this.disabled = true;
-    this.textContent = '⏳ جارٍ التحديث…';
-    await loadJobs();
-    renderAll();
-    this.disabled = false;
-    this.textContent = '↻ تحديث';
-  });
+  // حالة خطأ الـ API: إعادة محاولة، أو عرض تجريبي اختياري صريح
+  $('#retryApiBtn').addEventListener('click', async function () { await loadJobs(); });
+  $('#showDemoBtn').addEventListener('click', function () { showDemo(); });
 }
 
 /* ===== إقلاع ===== */
 document.addEventListener('DOMContentLoaded', async function () {
   state.saved = loadSaved();
+  state.liked = loadLiked();
+  state.notes = loadNotes();
   bindEvents();
   await loadJobs();
-  renderAll();
+  // فحص دوري كل 60 ثانية: أي وظيفة جديدة تظهر إشعاراً + Toast.
+  setInterval(function () { loadJobs(); }, POLL_INTERVAL_MS);
 });
 
 // للاختبار الآلي: منطق الفلترة والبيانات التجريبية مكشوفة
-window.__cjt = { applyFilters: applyFilters, DEMO_JOBS: DEMO_JOBS, state: state, SUBJECT_LABELS: SUBJECT_LABELS };
+window.__cjt = {
+  applyFilters: applyFilters,
+  DEMO_JOBS: DEMO_JOBS,
+  state: state,
+  SUBJECT_LABELS: SUBJECT_LABELS,
+  normalizeJob: normalizeJob,
+  stableId: stableId,
+  injectJob: injectJob,
+  showDemo: showDemo,
+  getUnreadCount: function () { return getUnreadJobs().length; },
+  loadJobs: loadJobs
+};

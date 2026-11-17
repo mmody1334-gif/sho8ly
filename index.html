@@ -8,23 +8,46 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<!-- ===== الشريط العلوي (نمط فيسبوك: أبيض، ثابت، ظل) ===== -->
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="#" aria-label="شغلي">
-      <span class="brand-mark" aria-hidden="true">⚗️</span>
-      <span class="brand-text">
-        <strong>شغلي</strong>
-        <small>كيمياء • فيزياء • أحياء</small>
-      </span>
-    </a>
-    <div class="search-box" role="search">
-      <span aria-hidden="true">🔍</span>
-      <input id="searchInput" type="search" placeholder="ابحث عن وظيفة، مادة، مكان، مصدر…" aria-label="بحث في الوظائف" autocomplete="off">
-      <button id="clearSearch" class="icon-btn" type="button" title="مسح البحث" aria-label="مسح البحث" hidden>✕</button>
+    <!-- يمين (بداية RTL): الشعار + البحث -->
+    <div class="top-right">
+      <a class="brand" href="#" aria-label="شغلي — الصفحة الرئيسية">
+        <span class="brand-mark" aria-hidden="true">⚗️</span>
+        <span class="brand-text"><strong>شغلي</strong></span>
+      </a>
+      <div class="search-box" role="search">
+        <span aria-hidden="true">🔍</span>
+        <input id="searchInput" type="search" placeholder="ابحث في شغلي" aria-label="بحث في الوظائف" autocomplete="off">
+        <button id="clearSearch" class="icon-btn" type="button" title="مسح البحث" aria-label="مسح البحث" hidden>✕</button>
+      </div>
     </div>
-    <div class="top-actions">
-      <button id="refreshBtn" class="btn btn-refresh" type="button">↻ تحديث</button>
-      <button id="savedTopBtn" class="btn btn-ghost" type="button" aria-pressed="false">⭐ المحفوظة <span id="savedTopCount" class="pill">0</span></button>
+    <!-- وسط: التنقل الرئيسي -->
+    <nav class="top-nav" aria-label="التنقل الرئيسي">
+      <button type="button" class="nav-item is-active" id="navHome" data-nav="home"><span class="nav-icon" aria-hidden="true">🏠</span><span class="nav-label">الرئيسية</span></button>
+      <button type="button" class="nav-item" id="navSaved" data-nav="saved"><span class="nav-icon" aria-hidden="true">⭐</span><span class="nav-label">المحفوظة</span></button>
+      <button type="button" class="nav-item" id="navSources" data-nav="sources"><span class="nav-icon" aria-hidden="true">📚</span><span class="nav-label">المصادر</span></button>
+      <button type="button" class="nav-item" id="navAbout" data-nav="about"><span class="nav-icon" aria-hidden="true">ℹ️</span><span class="nav-label">حول</span></button>
+    </nav>
+    <!-- يسار (نهاية RTL): الجرس + الملف الشخصي -->
+    <div class="top-left">
+      <div class="notif-wrap" id="notifWrap">
+        <button id="bellBtn" class="circle-btn" type="button" title="الإشعارات" aria-label="الإشعارات" aria-haspopup="true" aria-expanded="false">
+          <span aria-hidden="true">🔔</span>
+          <span id="notifBadge" class="notif-badge" hidden>0</span>
+        </button>
+        <div id="notifDropdown" class="notif-dropdown" hidden role="menu" aria-label="الإشعارات">
+          <div class="notif-head">
+            <h2>الإشعارات</h2>
+            <button id="markAllRead" class="link-btn" type="button">تعليم الكل كمقروء</button>
+          </div>
+          <button id="enableBrowserNotif" class="browser-notif-row" type="button" hidden>🔔 تفعيل إشعارات المتصفح</button>
+          <div id="notifList" class="notif-list"></div>
+          <p id="notifEmpty" class="notif-empty" hidden>لا توجد إشعارات جديدة</p>
+        </div>
+      </div>
+      <button class="avatar-btn" type="button" title="محمد مجدي" aria-label="الملف الشخصي">م</button>
     </div>
   </div>
 </header>
@@ -35,9 +58,23 @@
 </div>
 
 <main class="layout">
-  <!-- سايدبار الفلاتر -->
-  <aside class="sidebar sidebar-filters" aria-label="فلاتر">
-    <section class="card filter-card">
+  <!-- ===== السايدبار الأيمن (بداية RTL): الملف + القائمة + الفلاتر ===== -->
+  <aside class="sidebar sidebar-menu" aria-label="القائمة والفلاتر">
+    <div class="profile-row">
+      <span class="avatar-btn avatar-lg" aria-hidden="true">م</span>
+      <div class="profile-info">
+        <strong>محمد مجدي</strong>
+        <span>معلم كيمياء • فيزياء • أحياء</span>
+      </div>
+    </div>
+    <nav class="side-menu" aria-label="قائمة جانبية">
+      <button type="button" class="menu-item is-active" id="menuHome" data-menu="home"><span class="menu-icon" aria-hidden="true">🏠</span> الرئيسية</button>
+      <button type="button" class="menu-item" id="menuSaved" data-menu="saved"><span class="menu-icon" aria-hidden="true">⭐</span> المحفوظة <span id="savedTopCount" class="pill">0</span></button>
+      <button type="button" class="menu-item" id="menuFilters" data-menu="filters"><span class="menu-icon" aria-hidden="true">🎛️</span> الفلاتر</button>
+      <button type="button" class="menu-item" id="menuNotifs" data-menu="notifs"><span class="menu-icon" aria-hidden="true">🔔</span> الإشعارات <span id="notifMenuCount" class="pill pill-red" hidden>0</span></button>
+    </nav>
+
+    <section class="card filter-card" id="filterCard">
       <h2>🔎 الفلاتر</h2>
 
       <div class="filter-group">
@@ -87,18 +124,43 @@
         <span>⭐ عرض المحفوظة فقط</span>
       </label>
 
-      <button id="resetFilters" class="btn btn-ghost btn-block" type="button">إعادة تعيين الفلاتر</button>
+      <button id="resetFilters" class="btn btn-ghost-dark btn-block" type="button">إعادة تعيين الفلاتر</button>
     </section>
   </aside>
 
-  <!-- فيد الوظائف -->
+  <!-- ===== الفيد الأوسط ===== -->
   <section class="feed" aria-label="قائمة الوظائف">
+    <!-- الستوريز -->
+    <div id="storiesRow" class="stories-row" aria-label="المصادر"></div>
+
+    <!-- صندوق النشر -->
+    <div class="composer card">
+      <div class="composer-top">
+        <span class="avatar-btn" aria-hidden="true">م</span>
+        <button id="composerSearch" class="composer-input" type="button">ابحث عن وظيفة، مادة، مكان…</button>
+      </div>
+      <div class="composer-actions">
+        <button id="composerSearchBtn" class="composer-action" type="button">🔍 بحث</button>
+        <button id="composerFilterBtn" class="composer-action" type="button">🎛️ فلتر</button>
+        <button id="composerRefreshBtn" class="composer-action" type="button">↻ تحديث</button>
+      </div>
+    </div>
+
     <div class="feed-head">
       <h1 id="feedTitle">أحدث الوظائف</h1>
       <span id="resultCount" class="result-count" aria-live="polite"></span>
     </div>
     <p id="activeFilters" class="active-filters" aria-live="polite"></p>
     <div id="jobsList" class="jobs-list" aria-live="polite"></div>
+    <div id="apiErrorState" class="api-error-state" hidden>
+      <p class="empty-emoji" aria-hidden="true">📡</p>
+      <p><strong>تعذّر الاتصال بخادم الوظائف — تحقق من الاتصال ثم أعد المحاولة</strong></p>
+      <p>الوظائف الحية غير متاحة الآن. يمكنك إعادة المحاولة، أو عرض بيانات تجريبية للتجربة فقط.</p>
+      <div class="api-error-actions">
+        <button id="retryApiBtn" class="btn btn-primary" type="button">↻ إعادة المحاولة</button>
+        <button id="showDemoBtn" class="btn btn-ghost-dark" type="button">عرض بيانات تجريبية</button>
+      </div>
+    </div>
     <div id="emptyState" class="empty-state" hidden>
       <p class="empty-emoji" aria-hidden="true">🔭</p>
       <p><strong>لا توجد وظائف مطابقة للفلاتر الحالية.</strong></p>
@@ -107,9 +169,15 @@
     </div>
   </section>
 
-  <!-- سايدبار الإحصائيات -->
-  <aside class="sidebar sidebar-stats" aria-label="إحصائيات">
-    <section class="card stats-card">
+  <!-- ===== السايدبار الأيسر (نهاية RTL): المصادر + الإحصائيات ===== -->
+  <aside class="sidebar sidebar-sources" aria-label="المصادر والإحصائيات">
+    <section class="card sources-card" id="sourcesCard">
+      <h2>المصادر <span class="muted">— جهات الاتصال</span></h2>
+      <ul id="sourceList" class="source-list"></ul>
+    </section>
+
+    <section class="card stats-card sponsored-card">
+      <p class="sponsored-label">برعاية — إحصائيات</p>
       <h2>📊 إحصائيات اليوم</h2>
       <div class="stat">
         <span class="stat-num" id="statToday">0</span>
@@ -128,9 +196,9 @@
         <strong id="statTopSource">—</strong>
         <span id="statTopSourceCount" class="pill"></span>
       </div>
-      <ul id="sourceBreakdown" class="source-list"></ul>
     </section>
-    <section class="card about-card">
+
+    <section class="card about-card" id="aboutCard">
       <h2>ℹ️ عن التراكر</h2>
       <p>يجمع وظائف معلمي الكيمياء والفيزياء والأحياء من المنصات ومواقع التوظيف، ويرتّبها حسب نسبة المطابقة مع تفضيلاتك.</p>
       <p class="muted">آخر تحديث: <span id="lastUpdated">—</span></p>
@@ -141,6 +209,8 @@
 <footer class="footer">
   <p>شغلي — كيمياء • فيزياء • أحياء • الرياض والبريمي وأونلاين</p>
 </footer>
+
+<div id="toastWrap" class="toast-wrap" aria-live="polite"></div>
 
 <script src="app.js"></script>
 </body>
