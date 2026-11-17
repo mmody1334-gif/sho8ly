@@ -156,6 +156,15 @@ function inferMode(j) {
   return 'online';
 }
 
+/* المكان المعروض في الكرت والإشعارات والفلاتر: الوظيفة الأونلاين تُعرض
+ * «أونلاين» حتى لو كان المعلن في مدينة (مثلاً إعلان حراج من جدة يعرض
+ * «أونلاين زووم» أيضاً) — المدينة مقر المعلن للحضوري، والوظيفة نفسها عن بُعد. */
+function displayLocation(j) {
+  if (j.mode === 'online' || j.locationMode === 'online') return 'أونلاين';
+  const loc = String(j.location || '').trim();
+  return loc || 'غير محدد';
+}
+
 /* ===== التخزين المحلي ===== */
 function loadSet(key) {
   try {
@@ -343,7 +352,7 @@ function maybeBrowserNotify(job) {
   // إشعار متصفح فقط إن كان الإذن ممنوحاً مسبقاً — لا نطلب الإذن تلقائياً أبداً.
   try {
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      new Notification('🎯 وظيفة جديدة: ' + job.title, { body: job.source + ' • ' + (job.location || 'عن بُعد') });
+      new Notification('🎯 وظيفة جديدة: ' + job.title, { body: job.source + ' • ' + displayLocation(job) });
     }
   } catch (e) { /* تجاهل */ }
 }
@@ -362,7 +371,7 @@ function renderNotifs() {
       sourceAvatarHTML(j.source, 'source-logo source-logo-sm') +
       '<span class="notif-body">' +
         '<span class="notif-title">وظيفة جديدة: ' + esc(j.title) + '</span>' +
-        '<span class="notif-meta">' + esc(j.source) + ' • ' + esc(j.location || 'عن بُعد') + ' • ' + esc(postedLabel(j.postedDaysAgo)) + '</span>' +
+        '<span class="notif-meta">' + esc(j.source) + ' • ' + esc(displayLocation(j)) + ' • ' + esc(postedLabel(j.postedDaysAgo)) + '</span>' +
       '</span>' +
       '<span class="unread-dot" aria-hidden="true"></span>' +
     '</button>';
@@ -428,7 +437,7 @@ function applyFilters(jobs, filters, saved) {
   const q = normalizeArabic((filters.q || '').trim());
   return jobs.filter(function (j) {
     if (filters.subject !== 'all' && j.subject !== filters.subject) return false;
-    if (filters.location !== 'all' && j.location !== filters.location) return false;
+    if (filters.location !== 'all' && displayLocation(j) !== filters.location) return false;
     if (filters.mode !== 'all' && j.mode !== filters.mode) return false;
     if (filters.type !== 'all' && j.type !== filters.type) return false;
     if (filters.source !== 'all' && j.source !== filters.source) return false;
@@ -454,7 +463,7 @@ function jobCardHTML(j) {
       sourceAvatarHTML(j.source, 'source-logo') +
       '<div class="post-head-text">' +
         '<strong class="post-source">' + esc(j.source) + '</strong>' +
-        '<span class="post-meta">' + esc(postedLabel(j.postedDaysAgo)) + ' • 📍 ' + esc(j.location) + ' • 🌍 ' + esc(MODE_LABELS[j.mode]) + companyLine + '</span>' +
+        '<span class="post-meta">' + esc(postedLabel(j.postedDaysAgo)) + ' • 📍 ' + esc(displayLocation(j)) + ' • 🌍 ' + esc(MODE_LABELS[j.mode]) + companyLine + '</span>' +
       '</div>' +
     '</div>' +
     '<h2 class="post-text">' + esc(j.title) + '</h2>' +
@@ -462,7 +471,7 @@ function jobCardHTML(j) {
     '<div class="job-meta">' +
       '<span class="tag">' + esc(SUBJECT_LABELS[j.subject]) + '</span>' +
       '<span class="tag ' + modeClass + '">' + esc(MODE_LABELS[j.mode]) + '</span>' +
-      '<span class="tag">📍 ' + esc(j.location) + '</span>' +
+      '<span class="tag">📍 ' + esc(displayLocation(j)) + '</span>' +
       '<span class="tag">' + esc(TYPE_LABELS[j.type]) + '</span>' +
       (j.salary ? '<span class="tag">💰 ' + esc(j.salary) + '</span>' : '') +
     '</div>' +
@@ -820,6 +829,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 // للاختبار الآلي: منطق الفلترة والبيانات التجريبية مكشوفة
 window.__cjt = {
   applyFilters: applyFilters,
+  displayLocation: displayLocation,
   DEMO_JOBS: DEMO_JOBS,
   state: state,
   SUBJECT_LABELS: SUBJECT_LABELS,
