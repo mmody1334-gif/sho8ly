@@ -71,9 +71,36 @@ function sourceLabel(source) {
   const s = String(source || '').trim();
   return SOURCE_LABELS[s.toLowerCase()] || s || 'مصدر غير معروف';
 }
-// صورة البروفايل للبوست: أيقونة محايدة 💼 واحدة لكل المصادر — لا نضع شعار
-// أي شركة (ولا حرفاً بألوانها) كصورة بروفايل؛ اسم المصدر يظهر نصاً بجانبها.
-const SOURCE_AVATAR = '💼';
+// شعارات المصادر الحقيقية: صورة الشعار داخل إطار دائري أبيض (نمط فيسبوك).
+// المصدر الأول: خدمة أيقونات Google — تم التحقق بـ curl أنها ترجع 200 PNG
+// (128×128) لكل من linkedin.com وbayt.com وsaudi.tanqeeb.com وindeed.com
+// وpreply.com. خدمة Clearbit محجوبة من هذا الجهاز (curl 000) لكنها تعمل
+// على الشبكات العادية، فهي المصدر الاحتياطي الثاني؛ وإن فشل الاثنان
+// تظهر أيقونة 💼 المحايدة. اسم المصدر يظهر نصاً بجانب الشعار دائماً.
+const SOURCE_DOMAINS = {
+  linkedin: 'linkedin.com', bayt: 'bayt.com', tanqeeb: 'saudi.tanqeeb.com',
+  indeed: 'indeed.com', preply: 'preply.com',
+  'منصة نفهم': 'nafeham.com', 'منصة مدرستي': 'madrasati.sa'
+};
+function sourceDomain(source) {
+  const s = String(source || '').trim();
+  return SOURCE_DOMAINS[s.toLowerCase()] || SOURCE_DOMAINS[s] || '';
+}
+function logoUrl(source, stage) {
+  const d = sourceDomain(source);
+  if (!d) return '';
+  return stage === 0
+    ? 'https://www.google.com/s2/favicons?domain=' + d + '&sz=128'
+    : 'https://logo.clearbit.com/' + d;
+}
+function sourceAvatarHTML(source, wrapperClass) {
+  const cls = wrapperClass || 'source-logo';
+  const d = sourceDomain(source);
+  if (!d) return '<span class="' + cls + ' avatar-fallback" aria-hidden="true">💼</span>';
+  return '<span class="' + cls + '" aria-hidden="true">' +
+    '<img class="logo-img" src="' + logoUrl(source, 0) + '" data-domain="' + esc(d) + '" data-stage="0" alt="" loading="lazy">' +
+    '</span>';
+}
 function safeScroll(el) {
   if (!el) return;
   try { if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* بيئة بلا تمرير */ }
@@ -314,7 +341,7 @@ function renderNotifs() {
   list.innerHTML = unread.map(function (j) {
     return '' +
     '<button type="button" class="notif-item is-unread" data-notif-id="' + esc(j.id) + '">' +
-      '<span class="source-logo source-logo-sm" aria-hidden="true">' + SOURCE_AVATAR + '</span>' +
+      sourceAvatarHTML(j.source, 'source-logo source-logo-sm') +
       '<span class="notif-body">' +
         '<span class="notif-title">وظيفة جديدة: ' + esc(j.title) + '</span>' +
         '<span class="notif-meta">' + esc(j.source) + ' • ' + esc(j.location || 'عن بُعد') + ' • ' + esc(postedLabel(j.postedDaysAgo)) + '</span>' +
@@ -406,7 +433,7 @@ function jobCardHTML(j) {
   return '' +
   '<article class="job-card" data-id="' + esc(j.id) + '">' +
     '<div class="post-head">' +
-      '<span class="source-logo" aria-hidden="true">' + SOURCE_AVATAR + '</span>' +
+      sourceAvatarHTML(j.source, 'source-logo') +
       '<div class="post-head-text">' +
         '<strong class="post-source">' + esc(j.source) + '</strong>' +
         '<span class="post-meta">' + esc(postedLabel(j.postedDaysAgo)) + ' • 📍 ' + esc(j.location) + ' • 🌍 ' + esc(MODE_LABELS[j.mode]) + companyLine + '</span>' +
@@ -475,7 +502,7 @@ function renderStories() {
     const n = counts[src] || 0;
     html += '' +
     '<button type="button" class="story-card' + (state.filters.source === src ? ' is-active' : '') + '" data-story="' + esc(src) + '">' +
-      '<span class="story-avatar" aria-hidden="true">' + SOURCE_AVATAR + '</span>' +
+      sourceAvatarHTML(src, 'story-avatar') +
       '<span class="story-label">' + esc(src) + '</span>' +
       '<span class="story-sub">' + n + ' وظيفة</span>' +
     '</button>';
@@ -502,7 +529,7 @@ function renderStats() {
   $('#sourceList').innerHTML = ranked.map(function (r) {
     return '' +
     '<li><button type="button" class="source-row' + (state.filters.source === r[0] ? ' is-active' : '') + '" data-source-filter="' + esc(r[0]) + '">' +
-      '<span class="source-logo source-logo-sm" aria-hidden="true">' + SOURCE_AVATAR + '</span>' +
+      sourceAvatarHTML(r[0], 'source-logo source-logo-sm') +
       '<span class="source-row-name">' + esc(r[0]) + '</span>' +
       '<span class="online-dot" aria-hidden="true"></span>' +
       '<strong class="source-row-count">' + r[1] + '</strong>' +
@@ -559,6 +586,31 @@ function toggleSavedView(on) {
   renderAll();
 }
 
+/* ===== درج القائمة (موبايل) + زر البحث ===== */
+function openDrawer() {
+  document.body.classList.add('drawer-open');
+  const b = $('#menuBtn');
+  if (b) b.setAttribute('aria-expanded', 'true');
+  const o = $('#drawerOverlay');
+  if (o) o.hidden = false;
+}
+function closeDrawer() {
+  document.body.classList.remove('drawer-open');
+  const b = $('#menuBtn');
+  if (b) b.setAttribute('aria-expanded', 'false');
+  const o = $('#drawerOverlay');
+  if (o) o.hidden = true;
+}
+function toggleDrawer() {
+  if (document.body.classList.contains('drawer-open')) closeDrawer();
+  else openDrawer();
+}
+function showFilters() {
+  // على الموبايل: الفلاتر تعيش في الدرج؛ على الديسكتوب: تمرير لبطاقة الفلاتر.
+  if (window.innerWidth < 768) openDrawer();
+  else safeScroll($('#filterCard'));
+}
+
 function shareJob(id) {
   const job = state.jobs.find(function (j) { return j.id === id; });
   const url = job ? job.url : '#';
@@ -571,6 +623,39 @@ function shareJob(id) {
 }
 
 function bindEvents() {
+  // سلسلة احتياط شعارات المصادر: Google favicons ← Clearbit ← 💼 المحايدة.
+  // أحداث error لا تنتشر (bubbling) لكنها تُلتقط في مرحلة الالتقاط.
+  document.addEventListener('error', function (e) {
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG' || !img.classList || !img.classList.contains('logo-img')) return;
+    const stage = parseInt(img.dataset.stage || '0', 10);
+    if (stage === 0 && img.dataset.domain) {
+      img.dataset.stage = '1';
+      img.src = 'https://logo.clearbit.com/' + img.dataset.domain;
+    } else {
+      const wrap = img.parentNode;
+      if (wrap) { wrap.classList.add('avatar-fallback'); wrap.textContent = '💼'; }
+    }
+  }, true);
+
+  // درج القائمة (موبايل): همبرغر، غطاء، Esc، وأي نقرة داخل القائمة تغلقه.
+  const menuBtn = $('#menuBtn');
+  if (menuBtn) menuBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleDrawer(); });
+  const overlay = $('#drawerOverlay');
+  if (overlay) overlay.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); closeNotifDropdown(); } });
+  const sideMenu = document.querySelector('.sidebar-menu');
+  if (sideMenu) sideMenu.addEventListener('click', function (e) {
+    if (e.target.closest('a, button') && document.body.classList.contains('drawer-open')) closeDrawer();
+  });
+
+  // زر البحث (موبايل): يفتح صف بحث كامل العرض تحت الشريط العلوي.
+  const searchToggle = $('#searchToggleBtn');
+  if (searchToggle) searchToggle.addEventListener('click', function () {
+    document.body.classList.toggle('search-expanded');
+    if (document.body.classList.contains('search-expanded')) $('#searchInput').focus();
+  });
+
   document.querySelectorAll('.chip-row').forEach(function (row) {
     row.addEventListener('click', function (e) {
       const btn = e.target.closest('.chip');
@@ -619,14 +704,14 @@ function bindEvents() {
   // القائمة الجانبية
   $('#menuHome').addEventListener('click', function () { resetFilters(); safeScroll($('.feed')); });
   $('#menuSaved').addEventListener('click', function () { toggleSavedView(!state.filters.savedOnly); safeScroll($('.feed')); });
-  $('#menuFilters').addEventListener('click', function () { setNavActive('home'); safeScroll($('#filterCard')); });
+  $('#menuFilters').addEventListener('click', function () { setNavActive('home'); showFilters(); });
   $('#menuNotifs').addEventListener('click', function () { openNotifDropdown(); });
 
   // صندوق النشر
   const focusSearch = function () { searchInput.focus(); safeScroll(searchInput); };
   $('#composerSearch').addEventListener('click', focusSearch);
   $('#composerSearchBtn').addEventListener('click', focusSearch);
-  $('#composerFilterBtn').addEventListener('click', function () { safeScroll($('#filterCard')); });
+  $('#composerFilterBtn').addEventListener('click', function () { showFilters(); });
   $('#composerRefreshBtn').addEventListener('click', async function () { await loadJobs(); showToast('تم التحديث'); });
 
   // الجرس والقائمة المنسدلة
@@ -694,6 +779,12 @@ document.addEventListener('DOMContentLoaded', async function () {
   state.saved = loadSaved();
   state.liked = loadLiked();
   state.notes = loadNotes();
+  // PWA: تسجيل الـ Service Worker (كاش للأصول + شبكة أولاً للوظائف).
+  try {
+    if ('serviceWorker' in navigator && window.location.protocol.indexOf('http') === 0) {
+      navigator.serviceWorker.register('sw.js').catch(function () { /* تجاهل: لا SW */ });
+    }
+  } catch (e) { /* تجاهل */ }
   bindEvents();
   await loadJobs();
   // فحص دوري كل 60 ثانية: أي وظيفة جديدة تظهر إشعاراً + Toast.
@@ -711,5 +802,10 @@ window.__cjt = {
   injectJob: injectJob,
   showDemo: showDemo,
   getUnreadCount: function () { return getUnreadJobs().length; },
-  loadJobs: loadJobs
+  loadJobs: loadJobs,
+  sourceAvatarHTML: sourceAvatarHTML,
+  logoUrl: logoUrl,
+  sourceDomain: sourceDomain,
+  openDrawer: openDrawer,
+  closeDrawer: closeDrawer
 };

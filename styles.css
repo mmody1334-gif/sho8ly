@@ -281,14 +281,17 @@ a { color: var(--fb-blue); }
 }
 
 /* ===== التخطيط ===== */
+/* min-width:0 على عناصر الشبكة يمنع "انفجار الشبكة": بطاقة الفلاتر كانت
+ * تدفع عمود 1fr إلى 462px على شاشة 390px فيصير فيض أفقي 86px. */
 .layout {
   max-width: 1600px;
   margin: 0 auto;
   padding: 16px 14px 24px;
   display: grid;
   gap: 16px;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
+.layout > * { min-width: 0; }
 .card {
   background: var(--card);
   border: 0;
@@ -443,7 +446,6 @@ a { color: var(--fb-blue); }
   border: 4px solid #fff;
 }
 .story-avatar {
-  background: var(--fb-blue);
   position: absolute;
   top: 10px;
   inset-inline-start: 10px;
@@ -455,9 +457,10 @@ a { color: var(--fb-blue); }
   font-weight: 800;
   font-size: 17px;
   color: #fff;
-  background: var(--fb-blue);
+  background: #fff;
   border: 3px solid #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+  overflow: hidden;
 }
 .story-label { font-size: 13.5px; font-weight: 800; padding: 0 6px; text-align: center; }
 .story-sub { font-size: 12px; color: var(--muted); padding-bottom: 10px; }
@@ -513,7 +516,12 @@ a { color: var(--fb-blue); }
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* الوصف الإنجليزي الطويل والروابط يجب أن تلتف، لا أن تدفع الكرت خارج الشاشة */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
 }
+.job-summary, .post-text, .post-meta, .notif-title { overflow-wrap: anywhere; }
 @keyframes flashRing {
   0% { box-shadow: 0 0 0 3px var(--fb-blue), var(--shadow); }
   100% { box-shadow: var(--shadow); }
@@ -524,8 +532,9 @@ a { color: var(--fb-blue); }
 .post-source { font-size: 15px; }
 .post-source:hover { text-decoration: underline; }
 .post-meta { font-size: 13px; color: var(--muted); }
+/* شعار المصدر الحقيقي: صورة داخل إطار دائري أبيض (نمط فيسبوك).
+ * الاحتياطي 💼 فقط هو الذي يأخذ الخلفية الزرقاء. */
 .source-logo {
-  background: var(--fb-blue);
   flex: none;
   width: 40px;
   height: 40px;
@@ -535,9 +544,22 @@ a { color: var(--fb-blue); }
   font-weight: 800;
   font-size: 17px;
   color: #fff;
-  background: var(--fb-blue);
+  background: #fff;
+  border: 1px solid var(--line);
+  overflow: hidden;
 }
 .source-logo-sm { width: 36px; height: 36px; font-size: 15px; }
+.source-logo img.logo-img,
+.story-avatar img.logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 2px;
+  border-radius: 50%;
+  display: block;
+}
+.source-logo.avatar-fallback,
+.story-avatar.avatar-fallback { background: var(--fb-blue); border-color: var(--fb-blue); }
 .post-text { font-size: 16.5px; font-weight: 700; }
 .job-summary { color: #1c1e21; font-size: 14.5px; }
 .job-meta { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -715,9 +737,29 @@ a { color: var(--fb-blue); }
   font-weight: 600;
 }
 
+/* ===== صندوق تحميل التطبيق ===== */
+.download-app {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border: 1px solid #bad6f7;
+  background: linear-gradient(135deg, #e7f3ff, #ffffff);
+}
+.download-app-icon { font-size: 34px; line-height: 1; flex: none; }
+.download-app-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.download-app-text strong { font-size: 16px; }
+.download-app-text span { font-size: 13.5px; color: var(--muted); }
+.download-app-btn { flex: none; text-decoration: none; }
+
+/* زر الهمبرغر وزر البحث — موبايل فقط */
+.menu-btn, .search-toggle-btn { display: none; }
+.drawer-overlay { display: none; }
+
 /* ===== شاشات متوسطة وكبيرة ===== */
 @media (min-width: 768px) {
-  .layout { grid-template-columns: 280px minmax(0, 1fr); }
+  .layout { grid-template-columns: minmax(0, 280px) minmax(0, 1fr); }
   .sidebar-menu { order: 1; position: sticky; top: 72px; align-self: start; max-height: calc(100vh - 88px); overflow-y: auto; }
   .feed { order: 2; }
   .sidebar-sources { order: 3; grid-column: 1 / -1; }
@@ -726,21 +768,69 @@ a { color: var(--fb-blue); }
   .sidebar-sources .about-card { grid-column: 1 / -1; }
 }
 @media (min-width: 1100px) {
-  .layout { grid-template-columns: 300px minmax(0, 1fr) 300px; }
+  .layout { grid-template-columns: minmax(0, 300px) minmax(0, 1fr) minmax(0, 300px); }
   .sidebar-sources { order: 3; grid-column: auto; display: block; position: sticky; top: 72px; align-self: start; max-height: calc(100vh - 88px); overflow-y: auto; }
   .sidebar-sources .sources-card { margin-bottom: 16px; }
 }
 
-/* موبايل: عمود واحد، السايدبارات تنهار */
+/* موبايل: عمود واحد، القائمة درج منزلق، بحث بأيقونة */
 @media (max-width: 767px) {
   .top-nav { display: none; }
-  .search-box { width: 150px; }
   .brand-text { display: none; }
   .sidebar-sources { display: none; }
   .filter-card .chip-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
   .filter-card .chip-row .chip { flex: none; }
   .nav-label { display: none; }
-  .story-card { width: 100px; height: 164px; }
+  .story-card { width: 100px; height: 164px; scroll-snap-align: start; }
+  .stories-row { scroll-snap-type: x mandatory; }
   .notif-dropdown { position: fixed; top: 60px; inset-inline: 12px; width: auto; }
-  .action-btn { font-size: 13px; }
+  .action-btn { font-size: 13px; flex: 1 1 30%; }
+  .post-actions .btn-apply { flex: 1 1 100%; margin: 6px 0 0; text-align: center; }
+
+  /* الشريط العلوي: همبرغر + شعار + أيقونة بحث + جرس + أفاتار */
+  .menu-btn { display: grid; }
+  .search-toggle-btn { display: grid; }
+  .search-box { display: none; }
+  /* البحث الموسّع صف ثانٍ كامل العرض داخل الشريط العلوي (لا يغطي المحتوى) */
+  .topbar-inner { gap: 6px; flex-wrap: wrap; height: auto; min-height: 56px; padding-top: 6px; padding-bottom: 6px; row-gap: 8px; }
+  .top-right { flex-wrap: wrap; row-gap: 8px; }
+  body.search-expanded .search-box {
+    display: flex;
+    order: 10;
+    flex: 1 1 100%;
+    width: auto;
+    position: static;
+    box-shadow: none;
+  }
+
+  /* القائمة الجانبية درج منزلق من جهة البداية (اليمين في RTL) */
+  .sidebar-menu {
+    position: fixed;
+    inset-inline-start: 0;
+    top: 0;
+    bottom: 0;
+    width: min(320px, 86vw);
+    z-index: 90;
+    background: var(--bg);
+    overflow-y: auto;
+    padding: 12px;
+    transform: translateX(102%);
+    transition: transform .25s ease;
+    box-shadow: none;
+  }
+  body.drawer-open .sidebar-menu {
+    transform: translateX(0);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, .25);
+  }
+  .drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .5);
+    z-index: 80;
+  }
+  body.drawer-open .drawer-overlay { display: block; }
+
+  /* صندوق التحميل يتراص عمودياً والزر كامل العرض */
+  .download-app { flex-wrap: wrap; }
+  .download-app-btn { flex: 1 1 100%; text-align: center; }
 }

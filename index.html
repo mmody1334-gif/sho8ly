@@ -5,12 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>شغلي — وظائف معلم كيمياء • فيزياء • أحياء</title>
 <meta name="description" content="آخر وظائف معلمي الكيمياء والفيزياء والأحياء في الرياض والبريمي وعن بُعد — دروس خصوصية، تقوية، معاهد، مدارس، منصات.">
+<meta name="theme-color" content="#1877f2">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="شغلي">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <!-- ===== الشريط العلوي (نمط فيسبوك: أبيض، ثابت، ظل) ===== -->
 <header class="topbar">
   <div class="topbar-inner">
+    <button id="menuBtn" class="circle-btn menu-btn" type="button" title="القائمة" aria-label="القائمة" aria-expanded="false">☰</button>
     <!-- يمين (بداية RTL): الشعار + البحث -->
     <div class="top-right">
       <a class="brand" href="#" aria-label="شغلي — الصفحة الرئيسية">
@@ -30,8 +38,9 @@
       <button type="button" class="nav-item" id="navSources" data-nav="sources"><span class="nav-icon" aria-hidden="true">📚</span><span class="nav-label">المصادر</span></button>
       <button type="button" class="nav-item" id="navAbout" data-nav="about"><span class="nav-icon" aria-hidden="true">ℹ️</span><span class="nav-label">حول</span></button>
     </nav>
-    <!-- يسار (نهاية RTL): الجرس + الملف الشخصي -->
+    <!-- يسار (نهاية RTL): البحث + الجرس + الملف الشخصي -->
     <div class="top-left">
+      <button id="searchToggleBtn" class="circle-btn search-toggle-btn" type="button" title="بحث" aria-label="بحث">🔍</button>
       <div class="notif-wrap" id="notifWrap">
         <button id="bellBtn" class="circle-btn" type="button" title="الإشعارات" aria-label="الإشعارات" aria-haspopup="true" aria-expanded="false">
           <span aria-hidden="true">🔔</span>
@@ -51,6 +60,7 @@
     </div>
   </div>
 </header>
+<div id="drawerOverlay" class="drawer-overlay" hidden></div>
 
 <div id="demoBanner" class="demo-banner" hidden>
   <strong>⚠️ بيانات تجريبية</strong>
@@ -72,6 +82,7 @@
       <button type="button" class="menu-item" id="menuSaved" data-menu="saved"><span class="menu-icon" aria-hidden="true">⭐</span> المحفوظة <span id="savedTopCount" class="pill">0</span></button>
       <button type="button" class="menu-item" id="menuFilters" data-menu="filters"><span class="menu-icon" aria-hidden="true">🎛️</span> الفلاتر</button>
       <button type="button" class="menu-item" id="menuNotifs" data-menu="notifs"><span class="menu-icon" aria-hidden="true">🔔</span> الإشعارات <span id="notifMenuCount" class="pill pill-red" hidden>0</span></button>
+      <a class="menu-item" href="sho8ly.apk" download><span class="menu-icon" aria-hidden="true">📱</span> تحميل التطبيق</a>
     </nav>
 
     <section class="card filter-card" id="filterCard">
@@ -130,6 +141,16 @@
 
   <!-- ===== الفيد الأوسط ===== -->
   <section class="feed" aria-label="قائمة الوظائف">
+    <!-- تحميل التطبيق -->
+    <div class="download-app card" id="downloadAppBox">
+      <span class="download-app-icon" aria-hidden="true">📱</span>
+      <div class="download-app-text">
+        <strong>حمّل تطبيق شغلي للأندرويد</strong>
+        <span>تثبيت مباشر — إشعارات وتنبيهات فورية</span>
+      </div>
+      <a class="btn btn-primary download-app-btn" href="sho8ly.apk" download>⬇️ تحميل التطبيق</a>
+    </div>
+
     <!-- الستوريز -->
     <div id="storiesRow" class="stories-row" aria-label="المصادر"></div>
 
