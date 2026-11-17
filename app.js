@@ -8,7 +8,7 @@
 /* ===== الإعدادات ===== */
 const API_BASE = 'https://sho8ly.emailsaty.workers.dev';
 const JOBS_ENDPOINT = API_BASE + '/api/jobs';
-const FETCH_TIMEOUT_MS = 5000;
+const FETCH_TIMEOUT_MS = 15000; // بيانات الموبايل البطيئة: 5 ثوانٍ كانت تقطع التحميل
 const POLL_INTERVAL_MS = 60000;
 const STORAGE_KEY = 'cjt_saved_v1';
 const LIKED_KEY = 'sho8ly_liked_v1';
@@ -40,6 +40,8 @@ const state = {
   jobs: [],
   isDemo: false,
   apiError: false,
+  stale: false, // فشل تحديث دوري بينما توجد وظائف معروضة بالفعل
+  lastSyncAt: null, // آخر تحميل ناجح من الـ API
   filters: { subject: 'all', location: 'all', mode: 'all', type: 'all', source: 'all', savedOnly: false, q: '' },
   saved: new Set(),
   liked: new Set(),
@@ -240,12 +242,25 @@ async function loadJobs() {
     if (!list || list.length === 0) throw new Error('empty jobs');
     state.isDemo = false;
   } catch (e) {
-    // فشل الاتصال بالـ API (شبكة / CORS / مهلة): لا نعرض بيانات تجريبية
-    // بصمت أبداً — نعرض حالة خطأ واضحة مع زر إعادة محاولة، والبيانات
-    // التجريبية اختيار صريح من المستخدم فقط (زر "عرض بيانات تجريبية").
+    // فشل الاتصال بالـ API (شبكة / CORS / مهلة):
+    // - إن كانت توجد وظائف معروضة بالفعل (فشل تحديث دوري أو إعادة تحميل
+    //   يدوية بينما النت ضعيف): لا نمسحها أبداً ولا نعرض بطاقة الخطأ
+    //   الكبيرة — نكتفي بشريط "بيانات قديمة" صغير مع زر إعادة محاولة،
+    //   والوظائف تظل ظاهرة. (هذا ما حدث للمستخدم: تحديث دوري فشل بينما
+    //   النت 0 K/s فمُسحت الوظائف وظهرت بطاقة الخطأ رغم أن السيرفر سليم.)
+    // - إن لم توجد وظائف أصلاً (فشل التحميل الأول): بطاقة الخطأ الكبيرة
+    //   مع زر إعادة محاولة، والبيانات التجريبية اختيار صريح فقط.
+    if (state.jobs.length > 0) {
+      state.stale = true;
+      state.apiError = false;
+      updateNotifBadge();
+      renderAll();
+      return;
+    }
     state.jobs = [];
     state.isDemo = false;
     state.apiError = true;
+    state.stale = false;
     $('#demoBanner').hidden = true;
     updateNotifBadge();
     renderAll();
@@ -253,6 +268,8 @@ async function loadJobs() {
   }
   const normalized = list.map(normalizeJob);
   state.apiError = false;
+  state.stale = false;
+  state.lastSyncAt = new Date();
 
   // كشف الوظائف الجديدة مقارنة بما رأيناه من قبل.
   const prevSeen = loadSeen(); // null في أول زيارة
@@ -281,6 +298,7 @@ function showDemo() {
   state.jobs = DEMO_JOBS.map(normalizeJob);
   state.isDemo = true;
   state.apiError = false;
+  state.stale = false;
   const prevSeen = loadSeen();
   if (prevSeen === null) {
     persistSeen(new Set(state.jobs.map(function (j) { return j.id; })));
@@ -474,6 +492,12 @@ function renderJobs() {
   const list = $('#jobsList');
   list.innerHTML = filtered.map(jobCardHTML).join('');
   $('#apiErrorState').hidden = !state.apiError;
+  const staleEl = $('#staleBanner');
+  if (staleEl) {
+    staleEl.hidden = !state.stale;
+    const t = $('#staleTime');
+    if (t && state.lastSyncAt) t.textContent = state.lastSyncAt.toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' });
+  }
   $('#emptyState').hidden = state.apiError || filtered.length !== 0;
   $('#resultCount').textContent = filtered.length + ' وظيفة' + (filtered.length !== state.jobs.length ? ' من أصل ' + state.jobs.length : '');
   const active = [];
@@ -771,6 +795,8 @@ function bindEvents() {
 
   // حالة خطأ الـ API: إعادة محاولة، أو عرض تجريبي اختياري صريح
   $('#retryApiBtn').addEventListener('click', async function () { await loadJobs(); });
+  const staleRetry = $('#staleRetryBtn');
+  if (staleRetry) staleRetry.addEventListener('click', async function () { await loadJobs(); });
   $('#showDemoBtn').addEventListener('click', function () { showDemo(); });
 }
 
