@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>شغلي — وظائف معلم كيمياء • فيزياء • أحياء</title>
+<meta name="description" content="آخر وظائف معلمي الكيمياء والفيزياء والأحياء في الرياض والبريمي وعن بُعد — دروس خصوصية، تقوية، معاهد، مدارس، منصات.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#" aria-label="شغلي">
+      <span class="brand-mark" aria-hidden="true">⚗️</span>
+      <span class="brand-text">
+        <strong>شغلي</strong>
+        <small>كيمياء • فيزياء • أحياء</small>
+      </span>
+    </a>
+    <div class="search-box" role="search">
+      <span aria-hidden="true">🔍</span>
+      <input id="searchInput" type="search" placeholder="ابحث عن وظيفة، مادة، مكان، مصدر…" aria-label="بحث في الوظائف" autocomplete="off">
+      <button id="clearSearch" class="icon-btn" type="button" title="مسح البحث" aria-label="مسح البحث" hidden>✕</button>
+    </div>
+    <div class="top-actions">
+      <button id="refreshBtn" class="btn btn-refresh" type="button">↻ تحديث</button>
+      <button id="savedTopBtn" class="btn btn-ghost" type="button" aria-pressed="false">⭐ المحفوظة <span id="savedTopCount" class="pill">0</span></button>
+    </div>
+  </div>
+</header>
+
+<div id="demoBanner" class="demo-banner" hidden>
+  <strong>⚠️ بيانات تجريبية</strong>
+  <span>— الـ API لسه مش جاهز، فالوظائف المعروضة أمثلة واقعية الشكل للتجربة فقط.</span>
+</div>
+
+<main class="layout">
+  <!-- سايدبار الفلاتر -->
+  <aside class="sidebar sidebar-filters" aria-label="فلاتر">
+    <section class="card filter-card">
+      <h2>🔎 الفلاتر</h2>
+
+      <div class="filter-group">
+        <h3>طريقة العمل</h3>
+        <div class="chip-row" data-filter="mode">
+          <button type="button" class="chip is-active" data-value="all">الكل</button>
+          <button type="button" class="chip" data-value="online">🌐 أونلاين</button>
+          <button type="button" class="chip" data-value="onsite">🏫 حضوري</button>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>المكان (حضوري)</h3>
+        <div class="chip-row" data-filter="location">
+          <button type="button" class="chip is-active" data-value="all">كل الأماكن</button>
+          <button type="button" class="chip" data-value="الرياض">الرياض</button>
+          <button type="button" class="chip" data-value="البريمي">البريمي</button>
+          <button type="button" class="chip" data-value="عن بُعد">عن بُعد</button>
+        </div>
+        <p class="hint">الحضوري متاح في الرياض والبريمي فقط — الأونلاين من كل مكان.</p>
+      </div>
+
+      <div class="filter-group">
+        <h3>المادة</h3>
+        <div class="chip-row" data-filter="subject">
+          <button type="button" class="chip is-active" data-value="all">كل المواد</button>
+          <button type="button" class="chip" data-value="chem">⚗️ كيمياء</button>
+          <button type="button" class="chip" data-value="phys">🧲 فيزياء</button>
+          <button type="button" class="chip" data-value="bio">🧬 أحياء</button>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <h3>نوع الوظيفة</h3>
+        <div class="chip-row" data-filter="type">
+          <button type="button" class="chip is-active" data-value="all">كل الأنواع</button>
+          <button type="button" class="chip" data-value="private">👨‍🏫 دروس خصوصية</button>
+          <button type="button" class="chip" data-value="remedial">📚 تقوية</button>
+          <button type="button" class="chip" data-value="institute">🏛️ معاهد</button>
+          <button type="button" class="chip" data-value="school">🏫 مدارس</button>
+          <button type="button" class="chip" data-value="platform">💻 منصات</button>
+        </div>
+      </div>
+
+      <label class="saved-toggle">
+        <input type="checkbox" id="savedOnly">
+        <span>⭐ عرض المحفوظة فقط</span>
+      </label>
+
+      <button id="resetFilters" class="btn btn-ghost btn-block" type="button">إعادة تعيين الفلاتر</button>
+    </section>
+  </aside>
+
+  <!-- فيد الوظائف -->
+  <section class="feed" aria-label="قائمة الوظائف">
+    <div class="feed-head">
+      <h1 id="feedTitle">أحدث الوظائف</h1>
+      <span id="resultCount" class="result-count" aria-live="polite"></span>
+    </div>
+    <p id="activeFilters" class="active-filters" aria-live="polite"></p>
+    <div id="jobsList" class="jobs-list" aria-live="polite"></div>
+    <div id="emptyState" class="empty-state" hidden>
+      <p class="empty-emoji" aria-hidden="true">🔭</p>
+      <p><strong>لا توجد وظائف مطابقة للفلاتر الحالية.</strong></p>
+      <p>جرّب توسيع البحث أو إعادة تعيين الفلاتر.</p>
+      <button id="emptyReset" class="btn btn-primary" type="button">إعادة تعيين الفلاتر</button>
+    </div>
+  </section>
+
+  <!-- سايدبار الإحصائيات -->
+  <aside class="sidebar sidebar-stats" aria-label="إحصائيات">
+    <section class="card stats-card">
+      <h2>📊 إحصائيات اليوم</h2>
+      <div class="stat">
+        <span class="stat-num" id="statToday">0</span>
+        <span class="stat-label">وظيفة جديدة اليوم</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num" id="statTotal">0</span>
+        <span class="stat-label">إجمالي الوظائف المعروضة</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num" id="statSaved">0</span>
+        <span class="stat-label">وظيفة محفوظة لديك</span>
+      </div>
+      <div class="stat-source">
+        <span class="stat-label">أكثر مصدر نشط</span>
+        <strong id="statTopSource">—</strong>
+        <span id="statTopSourceCount" class="pill"></span>
+      </div>
+      <ul id="sourceBreakdown" class="source-list"></ul>
+    </section>
+    <section class="card about-card">
+      <h2>ℹ️ عن التراكر</h2>
+      <p>يجمع وظائف معلمي الكيمياء والفيزياء والأحياء من المنصات ومواقع التوظيف، ويرتّبها حسب نسبة المطابقة مع تفضيلاتك.</p>
+      <p class="muted">آخر تحديث: <span id="lastUpdated">—</span></p>
+    </section>
+  </aside>
+</main>
+
+<footer class="footer">
+  <p>شغلي — كيمياء • فيزياء • أحياء • الرياض والبريمي وأونلاين</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
